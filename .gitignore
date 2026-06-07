@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+.ipynb_checkpoints/
+
+data/
+
+reports/figures/
+reports/results/
+
+*.h5
+*.keras
+*.pkl
+*.npy
+*.npz
+models/lstm_experiments*/
