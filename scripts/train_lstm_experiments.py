@@ -18,7 +18,7 @@ if str(SRC_DIR) not in sys.path:
 
 from config import DEFAULT_MARKERS, DEFAULT_STEP_SIZE, DEFAULT_WINDOW_SIZE, RANDOM_STATE
 from data_loading import discover_trials
-from evaluation import classification_report_dict, evaluate_predictions
+from evaluation import save_window_and_recording_evaluation
 from metadata import load_subject_metadata
 from models import build_lstm_classifier
 from preprocessing import FeatureStandardizer
@@ -137,9 +137,14 @@ def main() -> None:
                 pd.DataFrame(history.history).to_csv(run_dir / "history.csv", index=False)
                 model.save(run_dir / "last_model.keras")
 
-                y_pred = np.argmax(model.predict(x_test, batch_size=args.batch_size), axis=1)
-                metrics = evaluate_predictions(y_test, y_pred)
-                report = classification_report_dict(y_test, y_pred, encoding.class_names)
+                y_proba = model.predict(x_test, batch_size=args.batch_size)
+                evaluation = save_window_and_recording_evaluation(
+                    metadata=test_meta,
+                    y_true=y_test,
+                    y_proba=y_proba,
+                    label_names=encoding.class_names,
+                    output_dir=run_dir,
+                )
 
                 payload = {
                     "task": task,
@@ -156,8 +161,7 @@ def main() -> None:
                     "n_train_windows": int(x_train.shape[0]),
                     "n_val_windows": int(x_val.shape[0]),
                     "n_test_windows": int(x_test.shape[0]),
-                    "metrics": metrics,
-                    "classification_report": report,
+                    "evaluation": evaluation,
                 }
 
                 (run_dir / "metrics.json").write_text(
@@ -165,7 +169,11 @@ def main() -> None:
                     encoding="utf-8",
                 )
                 all_results.append(flatten_result(payload, run_dir))
-                print(f"[{task}] {run_name}: {metrics}")
+                print(
+                    f"[{task}] {run_name}: "
+                    f"window={evaluation['window']['metrics']} "
+                    f"recording={evaluation['recording']['metrics']}"
+                )
 
     pd.DataFrame(all_results).to_csv(output_dir / "results_summary.csv", index=False)
 
@@ -244,6 +252,8 @@ def to_jsonable(value):
 
 
 def flatten_result(payload: dict, run_dir: Path) -> dict:
+    window_metrics = payload["evaluation"]["window"]["metrics"]
+    recording_metrics = payload["evaluation"]["recording"]["metrics"]
     return {
         "task": payload["task"],
         "run_dir": run_dir.as_posix(),
@@ -258,7 +268,8 @@ def flatten_result(payload: dict, run_dir: Path) -> dict:
         "n_train_windows": payload["n_train_windows"],
         "n_val_windows": payload["n_val_windows"],
         "n_test_windows": payload["n_test_windows"],
-        **payload["metrics"],
+        **{f"window_{key}": value for key, value in window_metrics.items()},
+        **{f"recording_{key}": value for key, value in recording_metrics.items()},
     }
 
 
