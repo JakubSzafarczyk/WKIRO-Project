@@ -1,0 +1,47 @@
+{
+  "metrics": {
+    "accuracy": 1.0,
+    "precision_macro": 1.0,
+    "recall_macro": 1.0,
+    "f1_macro": 1.0,
+    "f1_micro": 1.0,
+    "f1_weighted": 1.0
+  },
+  "classification_report": {
+    "female": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 208.0
+    },
+    "male": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 230.0
+    },
+    "accuracy": 1.0,
+    "macro avg": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 438.0
+    },
+    "weighted avg": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 438.0
+    }
+  },
+  "confusion_matrix": [
+    [
+      208,
+      0
+    ],
+    [
+      0,
+      230
+    ]
+  ]
+}
