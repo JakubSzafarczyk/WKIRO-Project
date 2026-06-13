@@ -1,235 +1,232 @@
-# WKIRO Project - LSTM dla danych motion capture
+# WKIRO Project - klasyfikacja motion capture z LSTM
 
-Projekt klasyfikuje sekwencje motion capture z datasetu chodu i biegu. Pipeline obejmuje:
+Projekt trenuje modele LSTM dla danych motion capture chodu i biegu. Pipeline obejmuje wczytanie plików CSV, centrowanie markerów względem miednicy, standaryzację, tworzenie okien czasowych, trening modeli i ewaluację wyników na poziomie okien oraz całych nagrań.
 
-- wczytanie plików `Post_Process/*.csv`,
-- centrowanie markerów względem miednicy (`LASI`, `RASI`, `LPSI`, `RPSI`),
-- standaryzację cech uczoną tylko na części treningowej,
-- podział na okna czasowe,
-- trening modeli LSTM dla trzech zadań,
-- ewaluację predykcji na poziomie okien i całych nagrań.
+## Zakres modeli
 
-## Zadania klasyfikacji
+Skrypty obsługują trzy zadania:
 
-Kod obsługuje trzy zadania:
+- `gait_type` - rozpoznawanie typu ruchu, np. `walk_slow`, `walk_fast`, `run_comfortable`.
+- `sex` - rozpoznawanie płci uczestnika.
+- `participant_id` - identyfikacja uczestnika.
 
-- `gait_type` - rozpoznanie typu ruchu, np. `walk_slow`, `walk_fast`, `run_comfortable`.
-- `sex` - rozpoznanie płci uczestnika na podstawie ruchu.
-- `participant_id` - identyfikacja konkretnego uczestnika.
+Domyślny preset `presentation` trenuje 7 konfiguracji LSTM dla każdego zadania. Zestaw jest oparty o założenia z prezentacji: różne długości okna, różna głębokość LSTM, liczba neuronów 15/32/64 i Adam z learning rate `0.001`.
 
-Domyślny split to `within_participant`: każdy uczestnik jest reprezentowany w `train`, `val` i `test`, a jego próby są dzielone proporcjonalnie. To jest potrzebne zwłaszcza dla `participant_id`, ponieważ klasy uczestników muszą występować również w treningu.
+Domyślne konfiguracje:
 
-Dla zadań `gait_type` i `sex` można eksperymentalnie użyć `participant_holdout`, gdzie całe osoby trafiają tylko do jednego zbioru. Nie używaj tego dla `participant_id`.
+| Nazwa | Window | Step | LSTM units | Dropout | Dense |
+|---|---:|---:|---|---:|---|
+| `win5_lstm15` | 5 | 5 | 15 | 0.20 | - |
+| `win10_lstm15x15` | 10 | 5 | 15, 15 | 0.20 | - |
+| `win20_lstm15x15x15` | 20 | 10 | 15, 15, 15 | 0.25 | - |
+| `win20_lstm32` | 20 | 10 | 32 | 0.30 | - |
+| `win50_lstm32` | 50 | 25 | 32 | 0.30 | - |
+| `win50_lstm64` | 50 | 25 | 64 | 0.30 | - |
+| `win100_lstm64x32_dense32` | 100 | 50 | 64, 32 | 0.30 | 32 |
+
+Łącznie domyślny trening daje 21 modeli: 7 konfiguracji x 3 zadania.
+
+## Split danych
+
+Domyślny split to `within_participant`: próby każdego uczestnika są proporcjonalnie dzielone na `train`, `val` i `test`. Dzięki temu każde zadanie, także `participant_id`, ma reprezentację wszystkich klas w części treningowej i testowej.
+
+Dla zadań `gait_type` i `sex` można eksperymentalnie użyć `participant_holdout`, ale nie należy używać go dla `participant_id`, bo wtedy test zawierałby klasy uczestników niewidziane podczas treningu.
 
 ## Instalacja
 
-Uruchom PowerShell w katalogu projektu:
+W katalogu projektu utwórz środowisko i zainstaluj zależności:
 
-```powershell
-cd C:\Users\kwnuk\Documents\Studia\WKiRO\WKIRO-Project
-```
-
-Jeżeli środowisko `.venv` już istnieje, zainstaluj zależności:
-
-```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-```
-
-Jeżeli trzeba utworzyć środowisko od zera:
-
-```powershell
+```bash
 python -m venv .venv
+```
+
+Windows:
+
+```powershell
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-Uwaga: TensorFlow na natywnym Windowsie zwykle użyje CPU. To normalne dla TensorFlow >= 2.11.
+Linux/macOS:
 
-## Szybka weryfikacja danych
+```bash
+./.venv/bin/python -m pip install --upgrade pip
+./.venv/bin/python -m pip install -r requirements.txt
+```
 
-Możesz sprawdzić, czy loader widzi dane i metadane:
+TensorFlow na natywnym Windowsie zwykle działa na CPU. To wystarczy do uruchomienia pipeline'u, ale pełny trening może potrwać.
+
+## Struktura danych
+
+Skrypty zakładają strukturę:
+
+```text
+data/
+  metadata.xlsx
+  <participant_id>/
+    Session1/
+      ...
+    Session2/
+      ...
+```
+
+Wczytywane są pliki:
+
+```text
+data/<participant_id>/Session*/<protocol>/<trial>/Post_Process/*.csv
+```
+
+## Szybka kontrola danych
+
+Windows:
 
 ```powershell
 .\.venv\Scripts\python.exe -c "import sys; from pathlib import Path; sys.path.append(str(Path('src').resolve())); from data_loading import discover_trials; from metadata import load_subject_metadata; print(len(discover_trials())); print(load_subject_metadata()[['participant_id','session','sex']].head())"
 ```
 
-Oczekiwany wynik to około `3026` prób CSV i metadane uczestników z kolumną `sex`.
+Linux/macOS:
 
-## Trening modeli
-
-### Szybki trening testowy
-
-Ten wariant ogranicza liczbę okien w każdym zbiorze, więc nadaje się do sprawdzenia, czy wszystko działa:
-
-```powershell
-.\.venv\Scripts\python.exe scripts\train_lstm_experiments.py --tasks gait_type sex participant_id --window-sizes 50 100 --lstm-units 32 64 64,32 --epochs 20 --max-windows-per-split 8000
+```bash
+./.venv/bin/python -c "import sys; from pathlib import Path; sys.path.append(str(Path('src').resolve())); from data_loading import discover_trials; from metadata import load_subject_metadata; print(len(discover_trials())); print(load_subject_metadata()[['participant_id','session','sex']].head())"
 ```
 
-### Pełniejszy trening
+## Trening
 
-Ten wariant nie ogranicza liczby okien:
+### Szybki test działania
 
-```powershell
-.\.venv\Scripts\python.exe scripts\train_lstm_experiments.py --tasks gait_type sex participant_id --window-sizes 50 100 --lstm-units 32 64 64,32 --epochs 30
-```
+Uruchamia po 2 konfiguracje na zadanie i ogranicza liczbę okien:
 
-### Przykład tylko dla jednego zadania
+Windows:
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\train_lstm_experiments.py --tasks gait_type --window-sizes 100 --lstm-units 64 --epochs 30
+.\.venv\Scripts\python.exe scripts\train_lstm_experiments.py --preset quick --epochs 3 --max-windows-per-split 1000
 ```
 
-### Ważne parametry
+Linux/macOS:
 
-- `--tasks` - lista zadań: `gait_type`, `sex`, `participant_id`.
-- `--window-sizes` - długości okien w klatkach, np. `50 100`.
-- `--step-size` - przesunięcie okna; domyślnie `50`.
-- `--lstm-units` - konfiguracje LSTM; `64,32` oznacza dwie warstwy.
-- `--dropouts` - wartości dropout, np. `0.2 0.3`.
-- `--learning-rates` - learning rate, np. `0.001 0.0005`.
-- `--epochs` - maksymalna liczba epok.
-- `--patience` - early stopping patience.
-- `--max-windows-per-split` - limit okien na split; zostaw bez tego parametru dla finalnej ewaluacji.
-- `--split-strategy` - `within_participant` albo `participant_holdout`.
+```bash
+./.venv/bin/python scripts/train_lstm_experiments.py --preset quick --epochs 3 --max-windows-per-split 1000
+```
+
+### Domyślny trening projektowy
+
+Uruchamia 7 modeli dla każdego z trzech zadań:
+
+Windows:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\train_lstm_experiments.py --preset presentation --epochs 30
+```
+
+Linux/macOS:
+
+```bash
+./.venv/bin/python scripts/train_lstm_experiments.py --preset presentation --epochs 30
+```
+
+### Trening wybranych zadań
+
+```bash
+python scripts/train_lstm_experiments.py --preset presentation --tasks gait_type sex --epochs 30
+```
+
+### Własny grid parametrów
+
+Jeżeli chcesz zignorować preset i użyć własnych wartości:
+
+```bash
+python scripts/train_lstm_experiments.py --preset custom --tasks gait_type --window-sizes 20 50 100 --lstm-units 32 64 64,32 --dropouts 0.2 0.3 --learning-rates 0.001 --epochs 30
+```
+
+Uwaga: tryb `custom` tworzy iloczyn kartezjański podanych parametrów. Łatwo przypadkowo uruchomić bardzo dużo modeli.
+
+## Wyniki treningu
+
+Domyślny katalog wyników:
+
+```text
+models/lstm_experiments/
+```
+
+Dla każdego modelu powstaje katalog runu zawierający:
+
+- `best_model.keras` - najlepszy model według `val_loss`.
+- `last_model.keras` - model po ostatniej epoce.
+- `history.csv` - historia treningu.
+- `metrics.json` - pełne metryki runu.
+- `window_predictions.csv` - predykcje dla okien.
+- `recording_predictions.csv` - predykcje po agregacji okien do całych nagrań.
+- `window_metrics.json` - metryki dla okien.
+- `recording_metrics.json` - metryki dla całych nagrań.
+- `window_confusion_matrix.csv` i `.png`.
+- `recording_confusion_matrix.csv` i `.png`.
+- `window_vs_recording_metrics.csv` - bezpośrednie porównanie metryk.
+
+## Ewaluacja i wykresy zbiorcze
+
+Po zakończeniu treningu uruchom:
+
+Windows:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\summarize_lstm_results.py --output-dir models\lstm_experiments --top-k 3
+```
+
+Linux/macOS:
+
+```bash
+./.venv/bin/python scripts/summarize_lstm_results.py --output-dir models/lstm_experiments --top-k 3
+```
+
+Skrypt zapisuje:
+
+- `evaluation_summary.csv` - wszystkie modele i ich metryki.
+- `best_runs_top3.csv` - najlepsze modele per zadanie.
+- `plots/overall_best_recording_accuracy.png` - najlepsze accuracy dla każdego zadania.
+- `plots/overall_best_recording_f1_macro.png` - najlepsze F1 macro dla każdego zadania.
+- `plots/<task>_model_comparison.png` - porównanie modeli w obrębie zadania.
+- `plots/<task>_window_vs_recording.png` - porównanie okien i całych nagrań.
+- `plots/<task>_hyperparameter_effects.png` - wpływ rozmiaru okna, architektury LSTM i dropout.
+
+## Jak wybrać najlepszy model
+
+Do wyboru modelu używaj przede wszystkim:
+
+- `recording_f1_macro` - główna metryka rankingowa, dobra przy nierównych klasach.
+- `recording_accuracy` - skuteczność dla całych nagrań.
+- `window_f1_macro` i `window_accuracy` - stabilność predykcji na krótkich fragmentach.
+- confusion matrix - informacja, które klasy są mylone.
+
+Praktyczna kolejność analizy:
+
+1. Otwórz `evaluation_summary.csv` i posortuj po `recording_f1_macro`.
+2. Sprawdź `best_runs_top3.csv`.
+3. Porównaj `plots/<task>_model_comparison.png`.
+4. Sprawdź `plots/<task>_hyperparameter_effects.png`, żeby opisać wpływ parametrów.
+5. Dla najlepszego modelu obejrzyj `recording_confusion_matrix.png`.
+6. Jeżeli `window_*` jest dużo gorsze niż `recording_*`, opisz, że pojedyncze okna bywają niestabilne, ale agregacja całego nagrania poprawia decyzję.
 
 ## Notebook
 
-Interaktywny wariant treningu znajduje się w:
+Interaktywny wariant eksperymentów znajduje się w:
 
 ```text
 notebooks/03_experiments.ipynb.py
 ```
 
-Plik ma komórki `# %%`, więc można go uruchamiać krok po kroku w VS Code albo PyCharm. Wyniki notebooka zapisują się w:
+Plik ma komórki `# %%`, więc można go uruchamiać krok po kroku w edytorach obsługujących notebook-style Python files.
 
-```text
-models/lstm_experiments_notebook/
+## Minimalny workflow
+
+```bash
+python -m venv .venv
+./.venv/bin/python -m pip install -r requirements.txt
+./.venv/bin/python scripts/train_lstm_experiments.py --preset quick --epochs 3 --max-windows-per-split 1000
+./.venv/bin/python scripts/summarize_lstm_results.py --output-dir models/lstm_experiments
 ```
 
-## Wyniki treningu
-
-Domyślny skrypt zapisuje wyniki do:
-
-```text
-models/lstm_experiments/
-```
-
-Struktura katalogu:
-
-```text
-models/lstm_experiments/
-  gait_type/
-    split_summary.csv
-    trial_split.csv
-    standardizer.json
-    window_100_step_50/
-      train_windows.csv
-      val_windows.csv
-      test_windows.csv
-      lstm_64_win_100_step_50_drop_0.3_lr_0.001/
-        best_model.keras
-        last_model.keras
-        history.csv
-        metrics.json
-        window_predictions.csv
-        window_metrics.json
-        window_confusion_matrix.csv
-        window_confusion_matrix.png
-        recording_predictions.csv
-        recording_metrics.json
-        recording_confusion_matrix.csv
-        recording_confusion_matrix.png
-        window_vs_recording_metrics.csv
-```
-
-## Ewaluacja
-
-Każdy run zapisuje dwie warstwy ewaluacji:
-
-- `window_*` - metryki liczone dla każdego okna czasowego osobno.
-- `recording_*` - metryki liczone po agregacji okien do całego nagrania.
-
-Agregacja nagrania działa tak:
-
-1. Model zwraca prawdopodobieństwa klas dla każdego okna.
-2. Dla jednego pliku/nagrania uśredniane są prawdopodobieństwa ze wszystkich jego okien.
-3. Predykcją całego nagrania jest klasa z najwyższym średnim prawdopodobieństwem.
-
-Najważniejsze pliki:
-
-- `window_predictions.csv` - predykcje i prawdopodobieństwa dla każdego okna.
-- `recording_predictions.csv` - predykcje po agregacji do całych nagrań.
-- `window_metrics.json` - accuracy, precision, recall, F1 dla okien.
-- `recording_metrics.json` - accuracy, precision, recall, F1 dla nagrań.
-- `window_confusion_matrix.png` - confusion matrix dla okien.
-- `recording_confusion_matrix.png` - confusion matrix dla całych nagrań.
-- `window_vs_recording_metrics.csv` - bezpośrednie porównanie metryk okien i nagrań.
-
-## Podsumowanie wielu eksperymentów
-
-Po treningu uruchom:
+Na Windowsie zamień `./.venv/bin/python` na:
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\summarize_lstm_results.py --output-dir models\lstm_experiments --top-k 3
+.\.venv\Scripts\python.exe
 ```
-
-Skrypt zapisze:
-
-```text
-models/lstm_experiments/evaluation_summary.csv
-models/lstm_experiments/best_runs_top3.csv
-```
-
-`evaluation_summary.csv` zawiera metryki dla wszystkich runów. `best_runs_top3.csv` pokazuje najlepsze konfiguracje per zadanie według `recording_f1_macro`.
-
-## Zalecana kolejność pracy
-
-1. Zainstaluj zależności:
-
-```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-```
-
-2. Uruchom szybki trening testowy:
-
-```powershell
-.\.venv\Scripts\python.exe scripts\train_lstm_experiments.py --tasks gait_type --window-sizes 50 --lstm-units 32 --epochs 3 --max-windows-per-split 1000
-```
-
-3. Sprawdź, czy powstały pliki:
-
-```text
-models/lstm_experiments/gait_type/.../window_confusion_matrix.png
-models/lstm_experiments/gait_type/.../recording_confusion_matrix.png
-```
-
-4. Uruchom pełniejszy trening:
-
-```powershell
-.\.venv\Scripts\python.exe scripts\train_lstm_experiments.py --tasks gait_type sex participant_id --window-sizes 50 100 --lstm-units 32 64 64,32 --epochs 30
-```
-
-5. Zbierz wyniki:
-
-```powershell
-.\.venv\Scripts\python.exe scripts\summarize_lstm_results.py --output-dir models\lstm_experiments --top-k 3
-```
-
-6. Do raportu użyj:
-
-- `evaluation_summary.csv`,
-- `best_runs_top3.csv`,
-- `window_vs_recording_metrics.csv`,
-- `window_confusion_matrix.png`,
-- `recording_confusion_matrix.png`.
-
-## Interpretacja wyników
-
-Porównuj przede wszystkim:
-
-- `recording_accuracy` - skuteczność po zagłosowaniu/uśrednieniu okien dla całego nagrania.
-- `recording_f1_macro` - dobra metryka przy nierównych klasach.
-- `window_accuracy` - pokazuje, jak stabilne są lokalne predykcje okien.
-- różnicę między `window_*` i `recording_*` - jeżeli nagrania są wyraźnie lepsze, model myli pojedyncze okna, ale całościowy sygnał jest stabilny.
-
-Do finalnego raportu lepiej używać wyników bez `--max-windows-per-split`, bo wtedy ewaluacja obejmuje wszystkie okna testowe.

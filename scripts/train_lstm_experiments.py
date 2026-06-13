@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from itertools import product
 from pathlib import Path
 
 import numpy as np
@@ -35,6 +34,84 @@ from training_data import (
     summarise_splits,
 )
 
+DEFAULT_EXPERIMENT_CONFIGS = [
+    {
+        "name": "win5_lstm15",
+        "window_size": 5,
+        "step_size": 5,
+        "lstm_units": (15,),
+        "dense_units": None,
+        "dropout": 0.2,
+        "learning_rate": 0.001,
+        "bidirectional": False,
+    },
+    {
+        "name": "win10_lstm15x15",
+        "window_size": 10,
+        "step_size": 5,
+        "lstm_units": (15, 15),
+        "dense_units": None,
+        "dropout": 0.2,
+        "learning_rate": 0.001,
+        "bidirectional": False,
+    },
+    {
+        "name": "win20_lstm15x15x15",
+        "window_size": 20,
+        "step_size": 10,
+        "lstm_units": (15, 15, 15),
+        "dense_units": None,
+        "dropout": 0.25,
+        "learning_rate": 0.001,
+        "bidirectional": False,
+    },
+    {
+        "name": "win20_lstm32",
+        "window_size": 20,
+        "step_size": 10,
+        "lstm_units": (32,),
+        "dense_units": None,
+        "dropout": 0.3,
+        "learning_rate": 0.001,
+        "bidirectional": False,
+    },
+    {
+        "name": "win50_lstm32",
+        "window_size": 50,
+        "step_size": 25,
+        "lstm_units": (32,),
+        "dense_units": None,
+        "dropout": 0.3,
+        "learning_rate": 0.001,
+        "bidirectional": False,
+    },
+    {
+        "name": "win50_lstm64",
+        "window_size": 50,
+        "step_size": 25,
+        "lstm_units": (64,),
+        "dense_units": None,
+        "dropout": 0.3,
+        "learning_rate": 0.001,
+        "bidirectional": False,
+    },
+    {
+        "name": "win100_lstm64x32_dense32",
+        "window_size": 100,
+        "step_size": 50,
+        "lstm_units": (64, 32),
+        "dense_units": 32,
+        "dropout": 0.3,
+        "learning_rate": 0.001,
+        "bidirectional": False,
+    },
+]
+
+QUICK_EXPERIMENT_CONFIGS = [
+    DEFAULT_EXPERIMENT_CONFIGS[0],
+    DEFAULT_EXPERIMENT_CONFIGS[4],
+]
+
 
 def main() -> None:
     args = parse_args()
@@ -42,6 +119,12 @@ def main() -> None:
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    experiment_configs = get_experiment_configs(args)
+    (output_dir / "experiment_configs.json").write_text(
+        json.dumps(to_jsonable(experiment_configs), indent=2),
+        encoding="utf-8",
+    )
 
     records = discover_trials(environments=args.environments)
     metadata = load_subject_metadata()
@@ -69,12 +152,12 @@ def main() -> None:
             encoding="utf-8",
         )
 
-        for window_size in args.window_sizes:
+        for window_size, step_size in unique_window_settings(experiment_configs):
             arrays = build_split_arrays(
                 table,
                 standardizer=standardizer,
                 window_size=window_size,
-                step_size=args.step_size,
+                step_size=step_size,
                 markers=DEFAULT_MARKERS,
                 max_windows_per_split=args.max_windows_per_split,
                 random_state=args.random_state,
@@ -84,18 +167,15 @@ def main() -> None:
             x_val, y_val, val_meta = arrays["val"]
             x_test, y_test, test_meta = arrays["test"]
 
-            window_dir = task_dir / f"window_{window_size}_step_{args.step_size}"
+            window_dir = task_dir / f"window_{window_size}_step_{step_size}"
             window_dir.mkdir(parents=True, exist_ok=True)
             train_meta.to_csv(window_dir / "train_windows.csv", index=False)
             val_meta.to_csv(window_dir / "val_windows.csv", index=False)
             test_meta.to_csv(window_dir / "test_windows.csv", index=False)
 
-            for units, dropout, learning_rate in product(
-                args.lstm_units,
-                args.dropouts,
-                args.learning_rates,
-            ):
-                run_name = run_id(window_size, args.step_size, units, dropout, learning_rate)
+            for config in configs_for_window(experiment_configs, window_size, step_size):
+                units = tuple(config["lstm_units"])
+                run_name = run_id(config)
                 run_dir = window_dir / run_name
                 run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -104,10 +184,10 @@ def main() -> None:
                     n_features=x_train.shape[-1],
                     n_classes=encoding.n_classes,
                     lstm_units=units,
-                    dense_units=args.dense_units,
-                    dropout=dropout,
-                    learning_rate=learning_rate,
-                    bidirectional=args.bidirectional,
+                    dense_units=config["dense_units"],
+                    dropout=config["dropout"],
+                    learning_rate=config["learning_rate"],
+                    bidirectional=config["bidirectional"],
                 )
 
                 callbacks = [
@@ -150,13 +230,14 @@ def main() -> None:
                     "task": task,
                     "class_names": list(encoding.class_names),
                     "split_strategy": args.split_strategy,
+                    "experiment_name": config["name"],
                     "window_size": window_size,
-                    "step_size": args.step_size,
+                    "step_size": step_size,
                     "lstm_units": list(units),
-                    "dense_units": args.dense_units,
-                    "dropout": dropout,
-                    "learning_rate": learning_rate,
-                    "bidirectional": args.bidirectional,
+                    "dense_units": config["dense_units"],
+                    "dropout": config["dropout"],
+                    "learning_rate": config["learning_rate"],
+                    "bidirectional": config["bidirectional"],
                     "epochs": len(history.history["loss"]),
                     "n_train_windows": int(x_train.shape[0]),
                     "n_val_windows": int(x_val.shape[0]),
@@ -186,6 +267,15 @@ def parse_args() -> argparse.Namespace:
         default=[TASK_GAIT_TYPE, TASK_SEX, TASK_PARTICIPANT_ID],
         choices=[TASK_GAIT_TYPE, TASK_SEX, TASK_PARTICIPANT_ID],
     )
+    parser.add_argument(
+        "--preset",
+        default="presentation",
+        choices=["presentation", "quick", "custom"],
+        help=(
+            "presentation runs 7 curated models per task, quick runs 2 smoke-test "
+            "models, custom uses the explicit grid arguments below."
+        ),
+    )
     parser.add_argument("--split-strategy", default=SPLIT_WITHIN_PARTICIPANT)
     parser.add_argument("--window-sizes", nargs="+", type=int, default=[DEFAULT_WINDOW_SIZE])
     parser.add_argument("--step-size", type=int, default=DEFAULT_STEP_SIZE)
@@ -205,25 +295,113 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def get_experiment_configs(args: argparse.Namespace) -> list[dict]:
+    if args.preset == "presentation":
+        return [normalise_config(config) for config in DEFAULT_EXPERIMENT_CONFIGS]
+    if args.preset == "quick":
+        return [normalise_config(config) for config in QUICK_EXPERIMENT_CONFIGS]
+    return custom_grid_configs(args)
+
+
+def custom_grid_configs(args: argparse.Namespace) -> list[dict]:
+    configs = []
+    for window_size in args.window_sizes:
+        for units in args.lstm_units:
+            for dropout in args.dropouts:
+                for learning_rate in args.learning_rates:
+                    configs.append(
+                        normalise_config(
+                            {
+                                "name": run_id_from_parts(
+                                    window_size=window_size,
+                                    step_size=args.step_size,
+                                    units=units,
+                                    dense_units=args.dense_units,
+                                    dropout=dropout,
+                                    learning_rate=learning_rate,
+                                    bidirectional=args.bidirectional,
+                                ),
+                                "window_size": window_size,
+                                "step_size": args.step_size,
+                                "lstm_units": units,
+                                "dense_units": args.dense_units,
+                                "dropout": dropout,
+                                "learning_rate": learning_rate,
+                                "bidirectional": args.bidirectional,
+                            }
+                        )
+                    )
+    return configs
+
+
+def normalise_config(config: dict) -> dict:
+    result = dict(config)
+    result["window_size"] = int(result["window_size"])
+    result["step_size"] = int(result["step_size"])
+    result["lstm_units"] = tuple(int(value) for value in result["lstm_units"])
+    result["dense_units"] = None if result["dense_units"] is None else int(result["dense_units"])
+    result["dropout"] = float(result["dropout"])
+    result["learning_rate"] = float(result["learning_rate"])
+    result["bidirectional"] = bool(result["bidirectional"])
+    return result
+
+
+def unique_window_settings(configs: list[dict]) -> list[tuple[int, int]]:
+    return sorted({(config["window_size"], config["step_size"]) for config in configs})
+
+
+def configs_for_window(configs: list[dict], window_size: int, step_size: int) -> list[dict]:
+    return [
+        config
+        for config in configs
+        if config["window_size"] == window_size and config["step_size"] == step_size
+    ]
+
+
 def parse_units(value: str) -> tuple[int, ...]:
     return tuple(int(part.strip()) for part in value.split(",") if part.strip())
 
 
-def run_id(
+def run_id(config: dict) -> str:
+    return run_id_from_parts(
+        window_size=config["window_size"],
+        step_size=config["step_size"],
+        units=tuple(config["lstm_units"]),
+        dense_units=config["dense_units"],
+        dropout=config["dropout"],
+        learning_rate=config["learning_rate"],
+        bidirectional=config["bidirectional"],
+        name=config["name"],
+    )
+
+
+def run_id_from_parts(
     window_size: int,
     step_size: int,
     units: tuple[int, ...],
+    dense_units: int | None,
     dropout: float,
     learning_rate: float,
+    bidirectional: bool,
+    name: str | None = None,
 ) -> str:
     units_text = "x".join(str(unit) for unit in units)
+    dense_text = "none" if dense_units is None else str(dense_units)
+    direction_text = "bilstm" if bidirectional else "lstm"
+    prefix = f"{slugify(name)}_" if name else ""
     return (
-        f"lstm_{units_text}"
+        prefix
+        + f"{direction_text}_{units_text}"
+        f"_dense_{dense_text}"
         f"_win_{window_size}"
         f"_step_{step_size}"
         f"_drop_{dropout:g}"
         f"_lr_{learning_rate:g}"
     )
+
+
+def slugify(value: str) -> str:
+    return "".join(char.lower() if char.isalnum() else "_" for char in value).strip("_")
 
 
 def save_table(table: pd.DataFrame, path: Path) -> None:
@@ -256,6 +434,7 @@ def flatten_result(payload: dict, run_dir: Path) -> dict:
     recording_metrics = payload["evaluation"]["recording"]["metrics"]
     return {
         "task": payload["task"],
+        "experiment_name": payload["experiment_name"],
         "run_dir": run_dir.as_posix(),
         "window_size": payload["window_size"],
         "step_size": payload["step_size"],
