@@ -1,0 +1,3 @@
+level,accuracy,precision_macro,recall_macro,f1_macro,f1_micro,f1_weighted
+window,1.0,1.0,1.0,1.0,1.0,1.0
+recording,1.0,1.0,1.0,1.0,1.0,1.0

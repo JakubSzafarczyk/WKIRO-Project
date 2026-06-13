@@ -1,0 +1,6 @@
+,run_comfortable,run_fast,walk_comfortable,walk_fast,walk_slow
+run_comfortable,84,14,0,0,0
+run_fast,7,94,0,0,0
+walk_comfortable,0,0,54,11,13
+walk_fast,0,0,23,64,1
+walk_slow,0,0,12,0,61

@@ -1,0 +1,16 @@
+split,target_name,trials,participants
+test,run_comfortable,98,30
+test,run_fast,101,30
+test,walk_comfortable,78,30
+test,walk_fast,88,30
+test,walk_slow,73,30
+train,run_comfortable,499,30
+train,run_fast,521,30
+train,walk_comfortable,367,30
+train,walk_fast,390,30
+train,walk_slow,339,30
+val,run_comfortable,102,30
+val,run_fast,107,30
+val,walk_comfortable,89,30
+val,walk_fast,93,30
+val,walk_slow,81,30
