@@ -69,93 +69,56 @@
 \begin{document}
 	\maketitle
 	
-	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	\begin{frame}[fragile]{Czym jest motion capture}
-		\begin{itemize}
-			\item Rejestracja ruchu w przestrzeni 3D.
-			\item Wynik: sekwencja pozycji markerów lub stawów w czasie.
-			\item Każda klatka -- ,,szkielet'' opisany wektorem współrzędnych.
-			\item Technologie: optyczne (Vicon), IMU, mechaniczne, magnetyczne.
-			\item Zastosowania: animacja, biomechanika, sport, rehabilitacja.
-		\end{itemize}
-		
-	\end{frame}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{frame}[fragile]{Motion capture i dane wejściowe}
+	\begin{itemize}
+		\item Motion capture rejestruje ruch 3D jako sekwencję pozycji markerów/stawów w czasie.
+		\item Każda klatka opisuje ,,szkielet'' wektorem współrzędnych.
+		\item Dane: Riglet et al. 2024, 30 uczestników, 63 markery, Vicon 100 Hz.
+		\item Wykorzystano pliki CSV z katalogów \texttt{Post\_Process}.
+	\end{itemize}
 	
-	\begin{frame}[fragile]{Sekwencja klatek chodu}
-		\centering
-		\includegraphics[height=0.85\textheight, width=\textwidth, keepaspectratio]{graf/walk_sequence.png}
-	\end{frame}
+	\vspace{0.5em}
 	
+	\makebox[\linewidth][c]{%
+		\includegraphics[
+		height=0.45\textheight,
+		width=0.85\linewidth,
+		keepaspectratio
+		]{graf/walk_sequence.png}%
+	}
+\end{frame}
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{frame}[fragile]{Pipeline przetwarzania}
+	\begin{itemize}
+		\item Wczytanie plików CSV dla uczestników i sesji.
+		\item Centrowanie markerów względem miednicy.
+		\item Standaryzacja cech.
+		\item Podział sygnału na okna czasowe \texttt{window} z krokiem \texttt{step}.
+		\item Podział \texttt{train/val/test} typu \texttt{within\_participant}.
+	\end{itemize}
+\end{frame}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{frame}[fragile]{Model LSTM i zadania klasyfikacji}
+	\begin{itemize}
+		\item LSTM modeluje zależności czasowe między kolejnymi klatkami ruchu.
+		\item Wejście: tensor \texttt{(window, n\_features)} ze współrzędnymi XYZ markerów.
+		\item Wyjście: klasyfikacja przez warstwę softmax.
+	\end{itemize}
 	
-	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	\begin{frame}[fragile]{Sieć LSTM -- opis sieci}
-		\begin{itemize}
-			\item LSTM = Long Short-Term Memory, wariant rekurencyjnej sieci neuronowej.
-			\item Zaprojektowana do uczenia się zależności w sekwencjach.
-			\item Rozwiązuje problem zanikającego gradientu klasycznych RNN.
-			\item Trzy bramki sterują przepływem informacji w komórce:
-			\begin{itemize}
-				\item \textbf{forget} -- co wyrzucić z pamięci,
-				\item \textbf{input} -- co dopisać,
-				\item \textbf{output} -- co wypuścić dalej.
-			\end{itemize}
-		\end{itemize}
-		
-		\begin{block}{Dlaczego LSTM dla mocap}
-			ruch to sekwencja czasowa -- LSTM modeluje relacje między klatkami w oknie czasowym i wykorzystuje je do klasyfikacji
-		\end{block}
-	\end{frame}
-	
-	
-	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	\begin{frame}[fragile]{Zbiór danych}
-		\textbf{Riglet et al., 2024 -- Scientific Data (Nature)}\\
-		\emph{,,3D motion analysis dataset of healthy young adult volunteers walking and running on overground and treadmill''}
-		
-		\vspace{0.8em}
-		\begin{itemize}
-			\item 30 zdrowych ochotników (28 $\pm$ 6 lat), 63 markery (CGM 2.5).
-			\item System Vicon, 18 kamer, 100 Hz, dwie sesje na uczestnika.
-			\item Chód: 3 prędkości; bieg: 2 prędkości; overground i bieżnia.
-			\item W projekcie wykorzystano pliki \textbf{CSV} (\texttt{Post\_Process}), nie pliki C3D.
-			\item Struktura: \texttt{data/<participant\_id>/Session*/<protokół>/<próba>/Post\_Process/*.csv}.
-			\item Dodatkowo \texttt{metadata.xlsx} z danymi uczestników (płeć, sesja itd.).
-		\end{itemize}
-	\end{frame}
-	
-	
-	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	\begin{frame}[fragile]{Pipeline przetwarzania danych}
-		\begin{itemize}
-			\item Wczytanie wszystkich plików CSV z \texttt{Post\_Process} dla każdego uczestnika i sesji.
-			\item \textbf{Centrowanie} współrzędnych markerów względem miednicy (usunięcie globalnego przemieszczenia).
-			\item \textbf{Standaryzacja} cech (StandardScaler).
-			\item Podział sygnału na \textbf{okna czasowe} o długości \texttt{window} z krokiem \texttt{step}.
-			\item Podział \texttt{train/val/test} typu \textbf{within\_participant} -- próby każdego uczestnika trafiają proporcjonalnie do każdego zbioru.
-		\end{itemize}
-		
-		\begin{block}{Dlaczego \texttt{within\_participant}}
-			każde zadanie (także \texttt{participant\_id}) ma reprezentację wszystkich klas zarówno w treningu, jak i w teście
-		\end{block}
-	\end{frame}
-	
-	
-	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	\begin{frame}[fragile]{Trzy zadania klasyfikacji}
-		\begin{itemize}
-			\item \textbf{\texttt{gait\_type}} -- typ ruchu, np. \texttt{walk\_slow}, \texttt{walk\_fast}, \texttt{run\_comfortable}.
-			\item \textbf{\texttt{sex}} -- płeć uczestnika.
-			\item \textbf{\texttt{participant\_id}} -- identyfikacja konkretnego uczestnika.
-		\end{itemize}
-		
-		\vspace{0.8em}
-		\textbf{Wejście do sieci:}
-		\begin{itemize}
-			\item wektor współrzędnych XYZ markerów (po centrowaniu i standaryzacji),
-			\item tensor \texttt{(window, n\_features)},
-			\item wyjście: rozkład prawdopodobieństwa nad klasami (softmax, one-hot).
-		\end{itemize}
-	\end{frame}
+	\vspace{0.5em}
+	\textbf{Zadania klasyfikacji:}
+	\begin{itemize}
+		\item \textbf{\texttt{gait\_type}} -- typ ruchu,
+		\item \textbf{\texttt{sex}} -- płeć uczestnika,
+		\item \textbf{\texttt{participant\_id}} -- identyfikacja uczestnika.
+	\end{itemize}
+\end{frame}
 	
 	
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -199,9 +162,6 @@
 			\item Wyniki zapisywane do \texttt{models/lstm\_experiments/<run>/}:\\
 			\texttt{history.csv}, \texttt{metrics.json}, \texttt{*\_predictions.csv}, \texttt{*\_confusion\_matrix.csv/.png}.
 		\end{itemize}
-		
-		\vspace{0.5em}
-		\textbf{\texttt{scripts/summarize\_lstm\_results.py}} -- zbiera wyniki wszystkich runów, tworzy \texttt{evaluation\_summary.csv}, \texttt{best\_runs\_top3.csv} oraz wykresy porównawcze.
 	\end{frame}
 	
 	
@@ -285,7 +245,7 @@
 	\end{frame}
 	
 		%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	\begin{frame}[fragile]{Wyniki -- identyfikacja uczestnika (poróWnanie modeli))}
+	\begin{frame}[fragile]{Wyniki -- identyfikacja uczestnika (porównanie modeli)}
 		\centering
 		\includegraphics[height=0.95\textheight, keepaspectratio]{graf/model_comparison_f1id.png}
 	\end{frame}
@@ -305,16 +265,14 @@
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	\begin{frame}[fragile]{Podsumowanie wyników}
 		\small
-		\begin{table}
-			\begin{tabular}{lllc}
-				\toprule
-				Zadanie & Najlepszy (okno) & Najlepszy (nagranie) & Max F1 \\
-				\midrule
-				typ chodu & \texttt{win50\_lstm64} -- 76,3\% & \texttt{win20\_lstm32} -- 84,0\% & $\sim$0,84 \\
-				płeć & dowolny -- $\sim$100\% & dowolny -- 100\% & 1,00 \\
-				ID uczestnika & \texttt{win50\_lstm64} -- 99,8\% & \texttt{win10\_lstm15x15} / \texttt{win50\_lstm64} -- 100\% & 1,00 \\
-				\bottomrule
-			\end{tabular}
+		\begin{table} 
+			\centering \scriptsize 
+			\begin{tabular}
+				{@{}lccc@{}} \toprule Zadanie & Okno & Nagranie & F1 \\ 
+				\midrule Chód & w50-L64: 76,3\% & w20-L32: 84,0\% & $\sim$0,84 \\ 
+				Płeć & $\sim$100\% & 100\% & 1,00 \\ ID & w50-L64: 99,8\% & w10-L15x2 / w50-L64: 100\% & 1,00 \\ 
+				\bottomrule 
+			\end{tabular} 
 		\end{table}
 		
 		\vspace{0.8em}
