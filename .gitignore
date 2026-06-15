@@ -13,3 +13,40 @@ reports/results/
 *.npy
 *.npz
 models/lstm_experiments*/
+
+# LaTeX auxiliary files
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.nav
+*.out
+*.run.xml
+*.snm
+*.synctex.gz
+*.toc
+*.vrb
+
+# LaTeX generated lists / indexes / glossaries
+*.acn
+*.acr
+*.alg
+*.glg
+*.glo
+*.gls
+*.idx
+*.ilg
+*.ind
+*.ist
+*.lof
+*.lot
+*.lol
+
+# Beamer / minted / temporary LaTeX dirs
+_minted*/
+*.pyg
+auto/
+*.auxlock
