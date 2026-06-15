@@ -1,6 +1,7 @@
 .venv/
 __pycache__/
 .ipynb_checkpoints/
+.idea
 
 data/
 
@@ -12,7 +13,6 @@ reports/results/
 *.pkl
 *.npy
 *.npz
-models/lstm_experiments*/
 
 # LaTeX auxiliary files
 *.aux
@@ -50,3 +50,4 @@ _minted*/
 *.pyg
 auto/
 *.auxlock
+data.zip
